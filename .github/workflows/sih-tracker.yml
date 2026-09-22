@@ -1,0 +1,45 @@
+name: SIH 2026 Tracker
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"     # every 5 minutes (GitHub may delay runs when busy)
+  workflow_dispatch:           # lets you run it manually from the Actions tab
+
+permissions:
+  contents: write              # needed to commit the updated Excel file
+
+concurrency:
+  group: sih-tracker
+  cancel-in-progress: false    # never let two runs push at the same time
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      TZ: Asia/Kolkata         # timestamps and 'today' in IST
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install beautifulsoup4 lxml openpyxl
+
+      - name: Update Excel
+        run: python sih_tracker.py --once   # add --watch SIH26011 SIH26084 to highlight your PS
+
+      - name: Commit if changed
+        run: |
+          git config user.name  "sih-tracker-bot"
+          git config user.email "sih-tracker-bot@users.noreply.github.com"
+          git add SIH2026_Submissions.xlsx .sih_tracker_state.json
+          if git diff --cached --quiet; then
+            echo "No changes"
+          else
+            git commit -m "Update SIH submissions $(TZ=Asia/Kolkata date '+%Y-%m-%d %H:%M IST')"
+            git pull --rebase
+            git push
+          fi
