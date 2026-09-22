@@ -19,12 +19,11 @@ jobs:
     env:
       TZ: Asia/Kolkata         # timestamps and 'today' in IST
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-          cache: pip
 
       - run: pip install beautifulsoup4 lxml openpyxl
 
