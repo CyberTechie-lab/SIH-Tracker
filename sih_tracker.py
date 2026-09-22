@@ -88,9 +88,13 @@ def fetch_html():
         for k, v in headers.items():
             cmd += ["-H", f"{k}: {v}"]
         cmd.append(URL)
-        r = subprocess.run(cmd, capture_output=True, timeout=120)
-        if r.returncode == 0 and b"dataTablePS" in r.stdout:
-            return r.stdout.decode("utf-8", errors="replace")
+        r = subprocess.run(cmd + ["-w", "\nHTTP_STATUS:%{http_code}"],
+                           capture_output=True, timeout=120)
+        out = r.stdout.decode("utf-8", errors="replace")
+        body, _, status = out.rpartition("\nHTTP_STATUS:")
+        if r.returncode == 0 and "dataTablePS" in body:
+            return body
+        log(f"curl got HTTP {status or '?'} (exit {r.returncode}): {body[:150]!r}")
     req = urllib.request.Request(URL, headers=headers)
     with urllib.request.urlopen(req, timeout=90) as resp:
         return resp.read().decode("utf-8", errors="replace")
@@ -281,12 +285,12 @@ def run_once(watch, cache=None):
     html = Path(cache).read_text(encoding="utf-8", errors="replace") if cache else fetch_with_retry()
     if html is None:
         log("Could not reach sih.gov.in - skipping this run")
-        return
+        return False
     try:
         rows = parse(html)
     except RuntimeError as e:
         log(f"Parse error: {e}")
-        return
+        return False
 
     state = load_state()
     today = datetime.now().strftime("%Y-%m-%d")
@@ -313,6 +317,7 @@ def run_once(watch, cache=None):
         hit = next((r for r in rows if r["ps_id"] == ps), None)
         if hit:
             log(f"  watch {ps}: {hit['ideas']} ideas")
+    return True
 
 
 def main():
@@ -329,8 +334,8 @@ def main():
     watch = {w.upper() for w in args.watch}
 
     if args.once:
-        run_once(watch, args.cache)
-        return
+        # exit code 1 on failure so CI (GitHub Actions) shows a clear red step
+        sys.exit(0 if run_once(watch, args.cache) else 1)
     log(f"Tracking {URL} every {args.interval:g} min -> {EXCEL_FILE.resolve()}  (Ctrl+C to stop)")
     while True:
         start = time.time()
